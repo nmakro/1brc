@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
-	"strconv"
 	"sync"
 	"time"
 
@@ -26,9 +26,9 @@ type Station struct {
 }
 
 type Measurement struct {
-	Min   float32
-	Max   float32
-	Mean  float32
+	Min   uint32
+	Max   uint32
+	Mean  uint32
 	Index int
 }
 
@@ -39,22 +39,23 @@ func processLines(lines [][]byte) (StationMeasurements, error) {
 	for _, line := range lines {
 		splitted := bytes.Split([]byte(line), []byte(";"))
 		name := string(splitted[0])
-		measurementString := string(splitted[1])
+		//measurementString := string(splitted[1])
 
-		measurementAsFloat, err := strconv.ParseFloat(measurementString, 32)
-		if err != nil {
-			return nil, fmt.Errorf("error parsing measurement: %v", err)
-		}
+		floatBits := parseFloatFromBytes(splitted[1])
 
-		measurement := float32(measurementAsFloat)
+		// measurementAsFloat, err := strconv.ParseFloat(measurementString, 32)
+		// if err != nil {
+		// 	return nil, fmt.Errorf("error parsing measurement: %v", err)
+		// }
 
 		prevMeasurement := localStations[name]
-		localStations[name] = Measurement{
-			Min:   calc.Min(prevMeasurement.Index, prevMeasurement.Min, measurement),
-			Max:   calc.Max(prevMeasurement.Index, prevMeasurement.Max, measurement),
-			Mean:  calc.CumAverage(prevMeasurement.Index, prevMeasurement.Mean, measurement),
+		msm := Measurement{
+			Min:   calc.Min(prevMeasurement.Index, prevMeasurement.Min, floatBits),
+			Max:   calc.Max(prevMeasurement.Index, prevMeasurement.Max, floatBits),
+			Mean:  calc.CumAverage(prevMeasurement.Index, prevMeasurement.Mean, floatBits),
 			Index: prevMeasurement.Index + 1,
 		}
+		localStations[name] = msm
 	}
 	return localStations, nil
 }
@@ -70,6 +71,28 @@ func skipUntilNewline(reader *bufio.Reader) error {
 			return nil
 		}
 	}
+}
+
+func parseFloatFromBytes(input []byte) uint32 {
+	// For "-99.4" we'll return -994 as integer representation
+	var result int32 = 0
+	isNegative := false
+
+	for _, b := range input {
+		switch b {
+		case '-':
+			isNegative = true
+		case '.':
+			continue
+		default:
+			result = result*10 + int32(b-'0')
+		}
+	}
+
+	if isNegative {
+		result = -result
+	}
+	return math.Float32bits(float32(result) / 10)
 }
 
 func main() {
@@ -192,7 +215,7 @@ func main() {
 	keys := maps.Keys(finalStations)
 	slices.Sort(keys)
 	for _, key := range keys {
-		fmt.Printf("%s=%.2f/%.2f/%.2f, occurences=%d\n", key, finalStations[key].Min, finalStations[key].Mean, finalStations[key].Max, finalStations[key].Index)
+		fmt.Printf("%s=%.1f/%.1f/%.1f, occurences=%d\n", key, math.Float32frombits(finalStations[key].Min), math.Float32frombits(finalStations[key].Mean), math.Float32frombits(finalStations[key].Max), finalStations[key].Index)
 	}
 
 	fmt.Printf("Time taken: %s\n", time.Since(now))
