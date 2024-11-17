@@ -1,6 +1,6 @@
 module github.com/nmakro/1brc
 
-go 1.22.1
+go 1.23.6
 
 require (
 	golang.org/x/exp v0.0.0-20240416160154-fe59bbe5cc7f
